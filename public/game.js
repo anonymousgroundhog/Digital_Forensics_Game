@@ -33,6 +33,196 @@ muteBtn.onclick = () => {
   if (!now) GameAudio.resume();
 };
 
+// ---- leaderboard (Google Sheet via /api) ----
+// Stable per-browser player id, so a rename can rewrite this player's past rows
+// (name alone is ambiguous — two players may pick the same name).
+function lbPlayerId() {
+  let id = localStorage.getItem('df_playerId');
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID()
+      : 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10));
+    localStorage.setItem('df_playerId', id);
+  }
+  return id;
+}
+
+const leaderboard = {
+  overlay: document.getElementById('lb-overlay'),
+  body: document.getElementById('lb-body'),
+  toggleBtn: document.getElementById('lb-toggle'),
+  enabled: localStorage.getItem('df_lb_on') === '1',
+  name: localStorage.getItem('df_username') || '',
+  playerId: lbPlayerId(),
+};
+
+function lbRefreshToggle() {
+  const on = leaderboard.enabled;
+  leaderboard.toggleBtn.classList.toggle('off', !on);
+  leaderboard.toggleBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  leaderboard.toggleBtn.title = on
+    ? 'Leaderboard ON — click to view / disable'
+    : 'Leaderboard OFF — click to enable online scores';
+}
+
+// Ask for a name (once), persist it. Returns the name or '' if cancelled.
+function lbEnsureName() {
+  if (leaderboard.name) return leaderboard.name;
+  return lbPromptName('Enter a name for the leaderboard:', '');
+}
+
+// Prompt for / change the stored name. Prefills current value. Returns the new
+// name, or the existing one if cancelled/blank. Persisted per browser.
+function lbPromptName(msg, prefill) {
+  const entered = (window.prompt(msg, prefill != null ? prefill : (leaderboard.name || '')) || '')
+    .trim().slice(0, 40);
+  if (!entered) return leaderboard.name || '';
+  leaderboard.name = entered;
+  localStorage.setItem('df_username', entered);
+  return entered;
+}
+
+// Change the username from the leaderboard header. Updates locally, rewrites
+// this player's existing rows on the sheet, then reloads the board so the new
+// name shows on past scores too.
+function lbChangeName() {
+  GameAudio.sfx.click();
+  const before = leaderboard.name;
+  const after = lbPromptName('Change your leaderboard name:', leaderboard.name || '');
+  if (!after || after === before) return;
+
+  lbRenderIdentity();
+  // Update the "Submit as <name>" label on the results screen in place, if shown.
+  const asName = document.querySelector('#lb-submit-box .lb-as b');
+  if (asName) asName.textContent = after;
+
+  // Push the rename to the sheet (rewrites past rows), then refresh the board.
+  const results = document.getElementById('lb-results');
+  if (results) results.innerHTML = `<p class="sub" style="padding:8px 0">Updating your name on past scores…</p>`;
+  lbRename(after).then(ok => {
+    if (ok) GameAudio.sfx.correct(); else GameAudio.sfx.wrong();
+    // Reload the board regardless — on failure the old name simply remains.
+    if (!leaderboard.overlay.hidden) reloadLeaderboardBoard();
+  });
+}
+
+// Render the "You: <name> ✎ Change" bar at the top of the leaderboard overlay.
+function lbRenderIdentity() {
+  const bar = document.getElementById('lb-identity');
+  if (!bar) return;
+  const who = leaderboard.name ? escapeHtml(leaderboard.name) : '<i>not set</i>';
+  bar.innerHTML = `
+    <span class="lb-you">🕵️ You: <b>${who}</b></span>
+    <button class="btn ghost small" id="lb-rename">✎ ${leaderboard.name ? 'Change name' : 'Set name'}</button>`;
+  const btn = document.getElementById('lb-rename');
+  if (btn) btn.onclick = lbChangeName;
+}
+
+// POST a score to the sheet. Returns a Promise<bool ok>.
+function lbSubmit(payload) {
+  return fetch('/api/leaderboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ playerId: leaderboard.playerId }, payload)),
+  }).then(r => r.json()).then(j => !!(j && j.ok)).catch(() => false);
+}
+
+// Rewrite this player's past rows to a new name. Returns Promise<bool ok>.
+function lbRename(name) {
+  return fetch('/api/leaderboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'rename', playerId: leaderboard.playerId, name }),
+  }).then(r => r.json()).then(j => !!(j && j.ok)).catch(() => false);
+}
+
+// GET top scores. Returns Promise<array | null>.
+function lbFetch(limit) {
+  return fetch(`/api/leaderboard?limit=${limit || 20}`)
+    .then(r => r.json())
+    .then(j => (j && j.ok ? j.scores : null))
+    .catch(() => null);
+}
+
+function openLeaderboard() {
+  GameAudio.sfx.click();
+  leaderboard.overlay.hidden = false;
+  // Identity bar (rename control) stays put; only the results area below reloads.
+  leaderboard.body.innerHTML = `
+    <div id="lb-identity" class="lb-identity"></div>
+    <div id="lb-results"><p class="sub" style="padding:8px 0">Loading scores…</p></div>`;
+  lbRenderIdentity();
+  reloadLeaderboardBoard();
+}
+
+// (Re)fetch scores and render the table into #lb-results. Used on open and
+// after a rename. Rows owned by this browser (matched on playerId) are tagged.
+function reloadLeaderboardBoard() {
+  const results = document.getElementById('lb-results');
+  if (!results) return;
+  results.innerHTML = `<p class="sub" style="padding:8px 0">Loading scores…</p>`;
+  lbFetch(25).then(scores => {
+    if (scores === null) {
+      results.innerHTML =
+        `<p class="sub" style="padding:8px 0">Leaderboard unavailable. The server needs <code>APPS_SCRIPT_URL</code> configured (see <code>apps-script/Code.gs</code>).</p>`;
+      return;
+    }
+    if (!scores.length) {
+      results.innerHTML = `<p class="sub" style="padding:8px 0">No scores yet. Close a case and submit to be first.</p>`;
+      return;
+    }
+    const myId = leaderboard.playerId;
+    const rows = scores.map((s, i) => {
+      // Prefer playerId match; fall back to name for legacy rows without an id.
+      const isMe = (s.playerId && String(s.playerId) === myId) ||
+        (!s.playerId && leaderboard.name && String(s.name) === leaderboard.name);
+      return `
+      <tr class="${isMe ? 'lb-me' : ''}">
+        <td class="lb-rank">${i + 1}</td>
+        <td class="lb-name">${escapeHtml(String(s.name || 'Anonymous'))}${isMe ? ' <span class="lb-youtag">you</span>' : ''}</td>
+        <td class="lb-case">${escapeHtml(String(s.case || ''))}</td>
+        <td class="lb-grade grade-${String(s.grade || '').toUpperCase()}">${escapeHtml(String(s.grade || ''))}</td>
+        <td class="lb-score">${s.score}<span class="lb-max">/${s.max}</span></td>
+      </tr>`;
+    }).join('');
+    results.innerHTML = `
+      <table class="lb-table">
+        <thead><tr><th>#</th><th>Name</th><th>Case</th><th>Grade</th><th>Score</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  });
+}
+function closeLeaderboard() { GameAudio.sfx.click(); leaderboard.overlay.hidden = true; }
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Toggle: off->on prompts for a name (and requires one); click when on opens the
+// board. Long-press / shift-click when on disables it.
+leaderboard.toggleBtn.onclick = e => {
+  GameAudio.sfx.click();
+  if (!leaderboard.enabled) {
+    const name = lbEnsureName();
+    if (!name) return; // cancelled — stay off
+    leaderboard.enabled = true;
+    localStorage.setItem('df_lb_on', '1');
+    lbRefreshToggle();
+    openLeaderboard();
+  } else if (e.shiftKey) {
+    leaderboard.enabled = false;
+    localStorage.setItem('df_lb_on', '0');
+    lbRefreshToggle();
+  } else {
+    openLeaderboard();
+  }
+};
+leaderboard.overlay.querySelectorAll('[data-lb-close]').forEach(e => e.onclick = closeLeaderboard);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !leaderboard.overlay.hidden) closeLeaderboard();
+});
+lbRefreshToggle();
+
 // Per-run state.
 const state = {
   caseIndex: 0,
@@ -401,6 +591,7 @@ function renderResults() {
         <div class="stat"><b>${c.stages.length}</b><span>DECISIONS</span></div>
       </div>
       <p style="max-width:520px;margin:0 auto 22px">${blurb}</p>
+      <div id="lb-submit-box" class="lb-submit"></div>
       <div class="row" style="justify-content:center">
         <button class="btn ghost" id="retry">↺ Retry case</button>
         ${hasNext ? `<button class="btn" id="next">Next world →</button>`
@@ -415,7 +606,59 @@ function renderResults() {
   document.getElementById('menu2').onclick = () => { GameAudio.sfx.click(); renderMenu(); };
   if (hasNext) document.getElementById('next').onclick = () => { GameAudio.sfx.click(); startCase(nextIdx); };
   else document.getElementById('menu').onclick = () => { GameAudio.sfx.click(); renderMenu(); };
+
+  renderSubmitBox(c, { score: state.score, max, grade, integrity: state.integrity });
   wireHover(app);
+}
+
+// Opt-in leaderboard submit UI on the results screen. Only shown when the
+// leaderboard toggle is ON. Submits this run's score to the Google Sheet.
+function renderSubmitBox(c, run) {
+  const box = document.getElementById('lb-submit-box');
+  if (!box) return;
+  if (!leaderboard.enabled) {
+    box.innerHTML = `<button class="btn ghost small" id="lb-enable">🏆 Enable leaderboard</button>`;
+    document.getElementById('lb-enable').onclick = () => {
+      GameAudio.sfx.click();
+      const name = lbEnsureName();
+      if (!name) return;
+      leaderboard.enabled = true;
+      localStorage.setItem('df_lb_on', '1');
+      lbRefreshToggle();
+      renderSubmitBox(c, run);
+    };
+    return;
+  }
+  const who = leaderboard.name ? escapeHtml(leaderboard.name) : 'Anonymous';
+  box.innerHTML = `
+    <div class="lb-submit-row">
+      <span class="lb-as">Submit as <b>${who}</b></span>
+      <button class="btn small" id="lb-send">🏆 Submit score</button>
+      <button class="btn ghost small" id="lb-view">View board</button>
+    </div>
+    <div class="lb-msg" id="lb-msg"></div>`;
+
+  const msg = document.getElementById('lb-msg');
+  const send = document.getElementById('lb-send');
+  document.getElementById('lb-view').onclick = openLeaderboard;
+  send.onclick = () => {
+    GameAudio.sfx.click();
+    const name = lbEnsureName();
+    if (!name) return;
+    send.disabled = true;
+    msg.textContent = 'Submitting…';
+    lbSubmit({
+      name,
+      case: c.title,
+      score: run.score,
+      max: run.max,
+      grade: run.grade,
+      integrity: run.integrity,
+    }).then(ok => {
+      if (ok) { msg.textContent = '✔ Submitted to leaderboard.'; msg.className = 'lb-msg ok'; GameAudio.sfx.correct(); }
+      else { msg.textContent = '✘ Submit failed — is the server configured?'; msg.className = 'lb-msg err'; send.disabled = false; GameAudio.sfx.wrong(); }
+    });
+  };
 }
 
 // ---------- Field Notes overlay ----------

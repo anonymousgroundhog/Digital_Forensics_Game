@@ -17,6 +17,7 @@
       <div class="hud-item"><label>CASE</label><span id="hud-case">—</span></div>
       <div class="hud-item"><label>INTEGRITY</label><span id="hud-integrity">100%</span></div>
       <div class="hud-item"><label>SCORE</label><span id="hud-score">0</span></div>
+      <button id="lb-toggle" class="mute" title="Leaderboard — submit scores online" aria-label="Toggle leaderboard" aria-pressed="false">🏆</button>
       <button id="mute" class="mute" title="Toggle sound" aria-label="Toggle sound">🔊</button>
       <button id="avatar-btn" class="avatar-btn" title="Detective — customize" aria-label="Open detective shop"></button>
     </div>
@@ -55,6 +56,17 @@
       </div>
       <nav id="shop-tabs" class="notes-tabs"></nav>
       <div id="shop-body" class="notes-content shop-grid"></div>
+    </aside>
+  </div>
+
+  <div id="lb-overlay" class="notes-overlay" hidden>
+    <div class="notes-backdrop" data-lb-close></div>
+    <aside class="notes-panel" role="dialog" aria-label="Leaderboard">
+      <header class="notes-head">
+        <span class="notes-title">🏆 LEADERBOARD</span>
+        <button id="lb-close" class="notes-close" aria-label="Close" data-lb-close>✕</button>
+      </header>
+      <div id="lb-body" class="notes-content"></div>
     </aside>
   </div>
 
