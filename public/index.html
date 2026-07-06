@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digital Forensics Detective</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="world"></canvas>
+  <div id="vignette"></div>
+  <div id="scanlines"></div>
+
+  <header class="topbar">
+    <div class="logo">🔍 <span>FORENSIC<b>OS</b></span></div>
+    <div class="hud">
+      <div class="hud-item"><label>CASE</label><span id="hud-case">—</span></div>
+      <div class="hud-item"><label>INTEGRITY</label><span id="hud-integrity">100%</span></div>
+      <div class="hud-item"><label>SCORE</label><span id="hud-score">0</span></div>
+      <button id="mute" class="mute" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+      <button id="avatar-btn" class="avatar-btn" title="Detective — customize" aria-label="Open detective shop"></button>
+    </div>
+  </header>
+
+  <main id="app"><!-- screens injected here --></main>
+
+  <button id="notes-btn" class="notes-btn" title="Field Notes — chapter study reference">📖 <span>Field Notes</span></button>
+
+  <div id="notes-overlay" class="notes-overlay" hidden>
+    <div class="notes-backdrop"></div>
+    <aside class="notes-panel" role="dialog" aria-label="Chapter notes">
+      <header class="notes-head">
+        <span class="notes-title">📖 FIELD NOTES</span>
+        <button id="notes-close" class="notes-close" aria-label="Close">✕</button>
+      </header>
+      <nav id="notes-tabs" class="notes-tabs"></nav>
+      <div id="notes-body" class="notes-content"></div>
+    </aside>
+  </div>
+
+  <div id="shop-overlay" class="notes-overlay" hidden>
+    <div class="notes-backdrop" data-shop-close></div>
+    <aside class="shop-panel" role="dialog" aria-label="Detective shop">
+      <header class="notes-head">
+        <span class="notes-title">🕵️ DETECTIVE</span>
+        <button id="shop-close" class="notes-close" aria-label="Close" data-shop-close>✕</button>
+      </header>
+      <div class="shop-hero">
+        <div id="shop-avatar" class="shop-avatar"></div>
+        <div class="shop-hero-info">
+          <div id="shop-title" class="shop-title-text">Rookie Investigator</div>
+          <div class="shop-balance">Available: <b id="shop-available">0</b> pts
+            <span class="muted" id="shop-banked"></span></div>
+        </div>
+      </div>
+      <nav id="shop-tabs" class="notes-tabs"></nav>
+      <div id="shop-body" class="notes-content shop-grid"></div>
+    </aside>
+  </div>
+
+  <footer class="foot">
+    Built from Digital Forensics, Investigation &amp; Response — Ch 1–4 ·
+    <span class="muted">Educational use</span>
+  </footer>
+
+  <script src="cases.js"></script>
+  <script src="notes.js"></script>
+  <script src="character.js"></script>
+  <script src="audio.js"></script>
+  <script src="worlds.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
