@@ -26,7 +26,8 @@ explanation tied back to the source chapter, so you learn by doing.
 
 ## Run it
 
-Node.js only — **zero dependencies**.
+Node.js only — **zero dependencies**. Node 14+ (uses `URL`, `String.startsWith`,
+`https.request`); Node 18+ recommended.
 
 ```bash
 node server.js
@@ -39,6 +40,65 @@ Port 3000 already in use? Pick another:
 ```bash
 PORT=4600 node server.js
 ```
+
+### Windows
+
+Install Node from [nodejs.org](https://nodejs.org/) (the LTS installer — tick
+"Add to PATH"), then open a terminal **in the project folder**:
+
+- **File Explorer** → navigate into `Digital_Forensics_Game` → type `cmd` (or
+  `powershell`) in the address bar → Enter.
+- Or open PowerShell and `cd C:\path\to\Digital_Forensics_Game`.
+
+Then:
+
+```powershell
+node server.js
+```
+
+Open **http://localhost:3000**.
+
+**Setting a different port.** The `PORT=4600 node server.js` form above is
+bash-only — it fails on Windows. Use your shell's syntax instead:
+
+```powershell
+# PowerShell
+$env:PORT=4600; node server.js
+```
+
+```bat
+:: Command Prompt (cmd.exe)
+set PORT=4600 && node server.js
+```
+
+Same pattern for the leaderboard URL (`APPS_SCRIPT_URL`).
+
+**"Cannot find module 'C:\...\server.js'"** — you're in the wrong directory.
+`cd` into the folder that contains `server.js`; check with `dir` (cmd) or
+`ls` (PowerShell). Node resolves the path relative to the current directory,
+not to where the file lives.
+
+**"'node' is not recognized..."** — Node isn't on `PATH`. Reopen the terminal
+after installing (PATH changes don't apply to already-open windows); if it
+still fails, re-run the installer and enable the PATH option.
+
+**Port already in use** (`EADDRINUSE`) — find and kill the holder:
+
+```powershell
+netstat -ano | findstr :3000
+taskkill /PID <pid> /F
+```
+
+**Firewall prompt** on first run — allow it, or just click Cancel. Localhost
+still works either way; the prompt only concerns other machines reaching you.
+
+**Leaderboard fails but the game works** — the leaderboard needs outbound HTTPS
+to `script.google.com`. Corporate proxies and TLS-inspecting antivirus block it.
+The game is fully playable without it.
+
+Everything else — audio, animation, saved progress — is browser-side and behaves
+the same on Windows. Use Chrome, Edge, or Firefox; the Web Audio API needs a
+click or keypress before sound starts.
 
 ## The cases
 
